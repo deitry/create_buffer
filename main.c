@@ -14,10 +14,14 @@
 
 #endif
 
-/* Вспомогательные функции.
+/* Вспомогательная функция. Преобразует строку ASCII в число по заданному основанию
  * Результат возвращаем через входные аргументы, чтобы можно было вернуть код отработки функции */
-int charToDec(char* str, unsigned int* result)
+int charToDigit(char* str, unsigned char base, unsigned int* result)
 {
+	if (base > 16) return FSTATUS_WRONGIN;	/* Чтобы не хотелось странного */
+		/* Теоретически, остаётся возможность произвольно выбрать основание числа не больше 16,
+		 * но делать лишние проверки, чтобы это исключить, как-то нецелесообразно */
+
 	*result = 0;	/* инициализируем */
 
 	while (*str != '\0')
@@ -25,32 +29,12 @@ int charToDec(char* str, unsigned int* result)
 		/* цифра */
 		if (*str >= NUM0 && *str <= NUM9)
 		{
-			*result = (*result)*10 + *str - NUM0;
+			*result = (*result)*base + *str - NUM0;
 		}
-		else
-			/* если что-то отличное от цифры*/
-			return FSTATUS_WRONGIN;
-		str++;
-	}
-
-	return FSTATUS_OK;
-}
-
-int charToHex(char* str, unsigned int* result)
-{
-	*result = 0;	/* инициализируем */
-
-	while (*str != '\0')
-	{
-		/* цифра */
-		if (*str >= NUM0 && *str <= NUM9)
-		{
-			*result = (*result)*16 + *str - NUM0;
-		}
-		else if (*str >= NUMA && *str <= NUMF)
+		else if (*str >= NUMA && *str <= NUMF && ((*str - DIFA) < base))
 		/* A..F. Строчные буквы не принимаем */
 		{
-			*result = (*result)*16 + *str - DIFA;
+			*result = (*result)*base + *str - DIFA;
 		}
 		else
 		/* если что-то отличное от хекс-цифры */
@@ -64,7 +48,15 @@ int charToHex(char* str, unsigned int* result)
 /*
  * Основная функция, чтобы можно было запустить.
  * В рабочем проекте её объявление скорее всего будет с фиксированными полями.
- * Строка входных параметров для примера: "7F 1 4620 999999 FAFA"
+ * Строки входных параметров для примера:
+ * "7F 1 4620 999999 FAFA", код завершения 0 // FSTATUS_OK // пример выходного буфера "7F1004620999999FAFAA"
+ * "7F 1 4620 999999", 		код завершения 0 // FSTATUS_OK
+ * "7F 1 4620", 			код завершения 1 // FSTATUS_WRONGCNT
+ * "7G 1 4620 999999", 		код завершения 2 // FSTATUS_WRONGIN
+ * "7F 1 462F 999999", 		код завершения 2 // FSTATUS_WRONGIN
+ * "7F 1 4620 9999999",		код завершения 3 // FSTATUS_BOUND
+ * "F0 1 4620 999999", 		код завершения 3 // FSTATUS_BOUND
+ * "7F 3 4620 999999", 		код завершения 4 // FSTATUS_WRONGSPC
  */
 int main (int argc, char* argv[])
 {
@@ -83,18 +75,19 @@ int main (int argc, char* argv[])
 
 	/* инициализируем переменные.
 	 * Если функция парсинга возвращает что-то, отличное от нуля, значит со входными данными что-то не то. */
-	if ((status = charToHex(argv[1], &(message.trkNo))) 	!= FSTATUS_OK) 	return status;	/* номер ТРК */
-	if ((status = charToHex(argv[2], &(message.command))) 	!= FSTATUS_OK) 	return status;	/* номер команды */
-	if ((status = charToDec(argv[3], &(message.price))) 	!= FSTATUS_OK) 	return status; /* цена */
-	if ((status = charToDec(argv[4], &(message.volume))) 	!= FSTATUS_OK) 	return status; /* объём дозы */
+	if ((status = charToDigit(argv[1], 16, &(message.trkNo))) 	!= FSTATUS_OK) 	return status;	/* номер ТРК */
+	if ((status = charToDigit(argv[2], 16, &(message.command))) != FSTATUS_OK) 	return status;	/* номер команды */
+	if ((status = charToDigit(argv[3], 10, &(message.price))) 	!= FSTATUS_OK) 	return status;	/* цена */
+	if ((status = charToDigit(argv[4], 10, &(message.volume))) 	!= FSTATUS_OK) 	return status;	/* объём дозы */
 
 	if (argc == INPUT_CNT + 2)
 	{
-		if ((status = charToHex(argv[5], &(message.status))) != FSTATUS_OK) return status;	/* значение для поля "статус", если есть */
+		if ((status = charToDigit(argv[5], 16, &(message.status))) != FSTATUS_OK) return status;	/* значение для поля "статус", если есть */
 	}
 	else
 	{
 		message.status = 0;	/* если не указан, на всякий случай принудительно инициализируем */
+			/* Если указан - запоминаем, хотя в большинстве случаев он ничего не делает, игнорируем */
 	}
 
 	/*
