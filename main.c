@@ -23,9 +23,9 @@ int charToDec(char* str, int* result)
 	while (*str != '\0')
 	{
 		/* цифра */
-		if (*str >= 0x30 && *str <= 0x39)
+		if (*str >= NUM0 && *str <= NUM9)
 		{
-			*result = (*result)*10 + *str - 0x30;
+			*result = (*result)*10 + *str - NUM0;
 		}
 		else
 			/* если что-то отличное от цифры*/
@@ -43,14 +43,14 @@ int charToHex(char* str, int* result)
 	while (*str != '\0')
 	{
 		/* цифра */
-		if (*str >= 0x30 && *str <= 0x39)
+		if (*str >= NUM0 && *str <= NUM9)
 		{
-			*result = (*result)*16 + *str - 0x30;
+			*result = (*result)*16 + *str - NUM0;
 		}
-		else if (*str >= 0x41 && *str <= 0x46)
+		else if (*str >= NUMA && *str <= NUMF)
 		/* A..F. Строчные буквы не принимаем */
 		{
-			*result = (*result)*16 + *str - 0x37;
+			*result = (*result)*16 + *str - DIFA;
 		}
 		else
 		/* если что-то отличное от хекс-цифры */
@@ -63,7 +63,7 @@ int charToHex(char* str, int* result)
 
 /*
  * Основная функция, чтобы можно было запустить.
- * В р
+ * В рабочем проекте её объявление скорее всего будет с фиксированными полями
  */
 int main (int argc, char* argv[])
 {
@@ -72,23 +72,24 @@ int main (int argc, char* argv[])
 	 * (значение для статуса полагаем опциональным, потому что для передачи от ККМ
 	 * он используется в сравнительно редких случаях).
 	 * Проверка на корректность данных будет осуществляться в функции наполнения буфера.
-	 * В реальной функции (не main) скорее всего входные поля будет фиксированными
+	 * В реальной функции (не main) скорее всего входные поля будет фиксированными и такая проверка не понадобится
 	 */
-	if (argc < INPUT_CNT + 1 || argc > INPUT_CNT + 2) return FSTATUS_WRONGIN;
+	if (argc < INPUT_CNT + 1 || argc > INPUT_CNT + 2) return FSTATUS_WRONGCNT;
 
 	/* объявление структуры, в которой будем содержать данные */
 	struct Message message;
+	int status;	// для запоминания статуса выполнения функции
 
 	/* инициализируем переменные.
 	 * Если функция парсинга возвращает что-то, отличное от нуля, значит со входными данными что-то не то. */
-	if (charToHex(argv[1], &(message.trkNo))) 	return FSTATUS_WRONGIN;	/* номер ТРК */
-	if (charToHex(argv[2], &(message.command))) return FSTATUS_WRONGIN;	/* номер команды */
-	if (charToDec(argv[3], &(message.price))) 	return FSTATUS_WRONGIN; /* цена */
-	if (charToDec(argv[4], &(message.volume))) 	return FSTATUS_WRONGIN; /* объём дозы */
+	if ((status = charToHex(argv[1], &(message.trkNo))) 	!= FSTATUS_OK) 	return status;	/* номер ТРК */
+	if ((status = charToHex(argv[2], &(message.command))) 	!= FSTATUS_OK) 	return status;	/* номер команды */
+	if ((status = charToDec(argv[3], &(message.price))) 	!= FSTATUS_OK) 	return status; /* цена */
+	if ((status = charToDec(argv[4], &(message.volume))) 	!= FSTATUS_OK) 	return status; /* объём дозы */
 
 	if (argc == INPUT_CNT + 2)
 	{
-		if (charToHex(argv[5], &(message.status))) 	return FSTATUS_WRONGIN;	/* значение для поля "статус", если есть */
+		if ((status = charToHex(argv[5], &(message.status))) != FSTATUS_OK) return status;	/* значение для поля "статус", если есть */
 	}
 	else
 	{
@@ -97,19 +98,23 @@ int main (int argc, char* argv[])
 
 	/*
 	 * Предполагаем, что одного буфера нам будет достаточно и для отправки нового сообщения
-	 * будем использовать его же, перезаписывая данные
+	 * будем использовать его же, перезаписывая данные.
+	 * Без применения динамического выделения памяти, массив под буфер должен быть объявлен вне функции, в которой формируется
+	 * - или в качестве глобальной переменной, или, как здесь, в той функции, которая предполагает его использование
 	 */
-
-	uint8 message_buf[MESSAGE_LENGTH+1];
+	uint8 message_buf[MESSAGE_LENGTH+1]; /* в самый последний байт на всякий случай пишем 0, чтобы выводилось нормально. */
+		/* В рабочих условиях можно будет последний байт исключить */
 
 	/* Инициализация */
-	for (uint8* ptr = message_buf; ptr < message_buf + MESSAGE_LENGTH; ptr++)
+	for (uint8* ptr = message_buf; ptr < message_buf + MESSAGE_LENGTH + 1; ptr++)
 	{
 		*ptr = '\0';
 	}
 
 	/* заполнение буфера */
-	fill_buffer ((uint8*)&message_buf[0], message);
+	status = fill_buffer (&message_buf[0], message);
+	if (status != FSTATUS_OK)
+		return status;
 
 #ifdef DEBUG
 	/* использование буфера - ради проверки выводим на экран */
