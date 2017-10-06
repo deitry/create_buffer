@@ -29,47 +29,40 @@ char digToChar(int num, char base)
 	return FSTATUS_NOTDIGIT;	/* если каким-то образом нам не подошло */
 }
 
-/* Макрос для записи числа в буфер в десятеричном формате.
+/* Макрос для записи числа в буфер.
  * Для разнообразия, выполнено в виде макроса, а не функции.
- * Переводим число в ascii в обратном порядке для сравнительной лаконичности преобразования */
-#define WRITE_TO_BUF_DEC(_var, _tmp, _len, _ptr, _crc)		\
+ * Переводим число в ascii в обратном порядке для сравнительной лаконичности преобразования
+ * _var - число, которое хотим записать в буфер
+ * _tmp - промежуточная переменная типа unsigned int, объявляемая снаружи
+ * _len - количество бит, выделяемых под переменную в буфере
+ * _ptr - указатель на ячейку буфера, начиная с которой следует записывать число
+ * _crc - переменная для подсчёта контрольной суммы в процессе записи
+ * _base - основание числа для представления его в буфере. Отличается для разных полей (10 или 16)
+ */
+#define WRITE_TO_BUF(_var, _tmp, _len, _ptr, _crc, _base)		\
 {													\
 	(_tmp) = (_var);								\
 	for (int i = 0; i < (_len); i++)				\
 	{												\
-		(_ptr)[(_len)-i-1] = digToChar((_tmp),10); 	\
+		(_ptr)[(_len)-i-1] = digToChar((_tmp),(_base)); 	\
 		(_crc) ^= (_ptr)[(_len)-i-1];				\
-		(_tmp) = (_tmp) / 10;						\
+		(_tmp) = (_tmp) / (_base);						\
 	}												\
 	(_ptr) += (_len);								\
 }
 
-/* Макрос для записи числа в буфер в шестнадцатиричном формате.
- * Для разнообразия, выполнено в виде макроса, а не функции.
- * Переводим число в ascii в обратном порядке для сравнительной лаконичности преобразования */
-#define WRITE_TO_BUF_HEX(_var, _tmp, _len, _ptr, _crc)		\
-{													\
-	(_tmp) = (_var);								\
-	for (int i = 0; i < (_len); i++)				\
-	{												\
-		(_ptr)[(_len)-i-1] = digToChar((_tmp),16); 	\
-		(_crc) ^= (_ptr)[(_len)-i-1];				\
-		(_tmp) = (_tmp) / 16;						\
-	}												\
-	(_ptr) += (_len);								\
-}
 
 /*
- * Функция принимает необходимые числа и составляет буфер по правилам протокола Искра
- * формат сообщения - список полей
- * наименование - размер
+ * Функция принимает необходимые числа и составляет буфер по правилам протокола Искра.
+ * формат сообщения (список полей):
+ * (наименование - размер - комментарий. Плюсами отмечены те, которые передаются в качестве входных данных)
  * SOH - 1 байт - маркер начала
  * + TRK_No - 2 байта - номер ТРК
  * + Command - 1 байт - код команды управления
  * STX - 1 байт - маркер начала поля данных
  * + Price 6 - байт - цена топлива, коп
  * + Volume - 6 байт - доза налива
- * Status - 4 байта - код состояния/ошибки
+ * + Status - 4 байта - код состояния/ошибки
  * ETX - 1 байт - маркер окончания поля данных
  * CRC - 1 байт - контрольная сумма
  * всего - 23 байта
@@ -77,14 +70,16 @@ char digToChar(int num, char base)
 int fill_buffer (uint8* buf, struct Message msg)
 {
 	/*
-	 * Проверка на то, что значения параметров в заданных границах
+	 * Проверка на то, что значения параметров в заданных границах.
+	 * Получить значения меньше нуля очень сложно, потому что типы полей структуры мы указали беззнаковыми,
+	 * но на всякий случай себя обезопасим, если определение структуры изменится
 	 */
-	if (msg.trkNo > 127) return FSTATUS_BOUND;
-	if (msg.command < 1 || msg.command > 9 || msg.command == 2 || msg.command == 8) return FSTATUS_BOUND;
+	if (msg.trkNo > MAX_TRKNO || msg.trkNo < 0) return FSTATUS_BOUND;
+	if (msg.command < 0 || msg.command > MAX_COM || msg.command == 2 || msg.command == 8) return FSTATUS_BOUND;
 		/* дополнительно проверка на исключённые из протокола команды 2 и 8.
 		 * Надо ли? Не могу сказать точно, не имея представления об эксплуатационной практике */
-	if (msg.price > 999999 || msg.price < 0) return FSTATUS_BOUND;
-	if (msg.volume > 999999 || msg.price < 0) return FSTATUS_BOUND;
+	if (msg.price > MAX_PRC || msg.price < 0) return FSTATUS_BOUND;
+	if (msg.volume > MAX_VOL || msg.price < 0) return FSTATUS_BOUND;
 
 	/*
 	 * Тут должны быть дополнительные проверки для обеспечения корректности параметров для всех специальных случаев.
@@ -106,7 +101,8 @@ int fill_buffer (uint8* buf, struct Message msg)
 
 	/* вспомогательный указатель */
 	uint8* ptr = buf;
-	int crc;
+	unsigned char crc;
+
 	/* маркер начала сообщения */
 	*ptr = 0x1; ptr++;
 
@@ -124,16 +120,16 @@ int fill_buffer (uint8* buf, struct Message msg)
 	*ptr = 0x2;
 	crc ^= *ptr; ptr++;
 
-	int tmp;
+	unsigned int tmp;
 
 	/* цена топлива */
-	WRITE_TO_BUF_DEC(msg.price, tmp, PRC_LEN, ptr, crc);
+	WRITE_TO_BUF(msg.price, tmp, PRC_LEN, ptr, crc, 10);
 
 	/* объём дозы */
-	WRITE_TO_BUF_DEC(msg.volume, tmp, VOL_LEN, ptr, crc);
+	WRITE_TO_BUF(msg.volume, tmp, VOL_LEN, ptr, crc, 10);
 
 	/* поле статуса. Может использоваться при передачах от ККМ к ТРК */
-	WRITE_TO_BUF_HEX(msg.status, tmp, STS_LEN, ptr, crc);
+	WRITE_TO_BUF(msg.status, tmp, STS_LEN, ptr, crc, 16);
 
 	/* маркер окончания поля данных */
 	*ptr = 0x3;

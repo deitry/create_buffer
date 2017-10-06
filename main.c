@@ -16,7 +16,7 @@
 
 /* Вспомогательные функции.
  * Результат возвращаем через входные аргументы, чтобы можно было вернуть код отработки функции */
-int charToDec(char* str, int* result)
+int charToDec(char* str, unsigned int* result)
 {
 	*result = 0;	/* инициализируем */
 
@@ -36,7 +36,7 @@ int charToDec(char* str, int* result)
 	return FSTATUS_OK;
 }
 
-int charToHex(char* str, int* result)
+int charToHex(char* str, unsigned int* result)
 {
 	*result = 0;	/* инициализируем */
 
@@ -63,7 +63,8 @@ int charToHex(char* str, int* result)
 
 /*
  * Основная функция, чтобы можно было запустить.
- * В рабочем проекте её объявление скорее всего будет с фиксированными полями
+ * В рабочем проекте её объявление скорее всего будет с фиксированными полями.
+ * Строка входных параметров для примера: "7F 1 4620 999999 FAFA"
  */
 int main (int argc, char* argv[])
 {
